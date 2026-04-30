@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const PDF_URL = "/the-secret-garden.pdf";
+const NUM_PAGES = 400;
+const PAGE_ASPECT = 632 / 1021;
 const STORAGE_KEY = "tsg-reader-state-v1";
 
 type Mode = "page" | "scroll";
@@ -20,15 +21,13 @@ declare global {
         expand: () => void;
         themeParams?: Record<string, string>;
         colorScheme?: "light" | "dark";
-        BackButton?: {
-          show: () => void;
-          hide: () => void;
-          onClick: (cb: () => void) => void;
-          offClick: (cb: () => void) => void;
-        };
       };
     };
   }
+}
+
+function pageUrl(p: number): string {
+  return `/pages/page-${String(p).padStart(3, "0")}.jpg`;
 }
 
 function loadSaved(): SavedState | null {
@@ -48,15 +47,9 @@ function persist(state: SavedState) {
 }
 
 export default function Reader() {
-  const [pdf, setPdf] = useState<any>(null);
-  const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
   const [mode, setMode] = useState<Mode>("page");
-  const [loading, setLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,48 +76,21 @@ export default function Reader() {
     const saved = loadSaved();
     if (saved) {
       if (saved.mode) setMode(saved.mode);
-      if (saved.page) setPage(saved.page);
+      if (saved.page) setPage(Math.max(1, Math.min(NUM_PAGES, saved.page)));
     }
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const pdfjs: any = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-
-        const task = pdfjs.getDocument({ url: PDF_URL });
-        task.onProgress = (p: { loaded: number; total: number }) => {
-          if (p.total) setLoadProgress(Math.round((p.loaded / p.total) * 100));
-        };
-        const doc = await task.promise;
-        if (cancelled) return;
-        setPdf(doc);
-        setNumPages(doc.numPages);
-        setLoading(false);
-      } catch (e: any) {
-        if (!cancelled) {
-          setError(e?.message ?? "Failed to load PDF");
-          setLoading(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!loading) persist({ page, mode });
-  }, [page, mode, loading]);
+    if (hydrated) persist({ page, mode });
+  }, [page, mode, hydrated]);
 
   const goPrev = useCallback(() => {
     setPage((p) => Math.max(1, p - 1));
   }, []);
   const goNext = useCallback(() => {
-    setPage((p) => Math.min(numPages || 1, p + 1));
-  }, [numPages]);
+    setPage((p) => Math.min(NUM_PAGES, p + 1));
+  }, []);
 
   useEffect(() => {
     if (mode !== "page") return;
@@ -138,56 +104,27 @@ export default function Reader() {
       } else if (e.key === "Home") {
         setPage(1);
       } else if (e.key === "End") {
-        setPage(numPages || 1);
+        setPage(NUM_PAGES);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, goNext, goPrev, numPages]);
+  }, [mode, goNext, goPrev]);
 
   return (
     <div className="reader-root">
       <Toolbar
         mode={mode}
         page={page}
-        numPages={numPages}
         onModeChange={setMode}
-        onPageChange={(p) => setPage(Math.max(1, Math.min(numPages || 1, p)))}
-        disabled={loading || !!error}
+        onPageChange={(p) => setPage(Math.max(1, Math.min(NUM_PAGES, p)))}
       />
 
-      <div className="reader-stage" ref={containerRef}>
-        {loading && (
-          <div className="reader-msg">
-            <div className="spinner" />
-            <p>Loading book&hellip; {loadProgress}%</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="reader-msg reader-error">
-            <p>Could not load the book.</p>
-            <p className="reader-error-detail">{error}</p>
-          </div>
-        )}
-
-        {!loading && !error && pdf && mode === "page" && (
-          <PageMode
-            pdf={pdf}
-            page={page}
-            numPages={numPages}
-            onPrev={goPrev}
-            onNext={goNext}
-          />
-        )}
-
-        {!loading && !error && pdf && mode === "scroll" && (
-          <ScrollMode
-            pdf={pdf}
-            numPages={numPages}
-            currentPage={page}
-            onPageChange={setPage}
-          />
+      <div className="reader-stage">
+        {mode === "page" ? (
+          <PageMode page={page} onPrev={goPrev} onNext={goNext} />
+        ) : (
+          <ScrollMode currentPage={page} onPageChange={setPage} />
         )}
       </div>
 
@@ -206,37 +143,6 @@ export default function Reader() {
           position: relative;
           overflow: hidden;
         }
-        .reader-msg {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 16px;
-          padding: 24px;
-          text-align: center;
-          color: var(--tg-theme-hint-color, #9aa6b2);
-        }
-        .reader-error-detail {
-          font-size: 12px;
-          opacity: 0.7;
-          word-break: break-word;
-        }
-        .spinner {
-          width: 32px;
-          height: 32px;
-          border: 3px solid currentColor;
-          border-top-color: transparent;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          opacity: 0.7;
-        }
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
       `}</style>
     </div>
   );
@@ -245,24 +151,19 @@ export default function Reader() {
 function Toolbar({
   mode,
   page,
-  numPages,
   onModeChange,
   onPageChange,
-  disabled,
 }: {
   mode: Mode;
   page: number;
-  numPages: number;
   onModeChange: (m: Mode) => void;
   onPageChange: (p: number) => void;
-  disabled: boolean;
 }) {
   return (
     <div className="toolbar">
       <button
         className="toolbar-btn"
         onClick={() => onModeChange(mode === "page" ? "scroll" : "page")}
-        disabled={disabled}
         title={mode === "page" ? "Switch to scroll mode" : "Switch to page mode"}
       >
         {mode === "page" ? "Scroll mode" : "Page mode"}
@@ -272,15 +173,14 @@ function Toolbar({
         <input
           type="number"
           min={1}
-          max={numPages || 1}
+          max={NUM_PAGES}
           value={page}
           onChange={(e) => {
             const v = parseInt(e.target.value, 10);
             if (!Number.isNaN(v)) onPageChange(v);
           }}
-          disabled={disabled}
         />
-        <span> / {numPages || "\u2026"}</span>
+        <span> / {NUM_PAGES}</span>
       </div>
 
       <style jsx>{`
@@ -304,10 +204,6 @@ function Toolbar({
           font-weight: 600;
           cursor: pointer;
         }
-        .toolbar-btn:disabled {
-          opacity: 0.5;
-          cursor: default;
-        }
         .page-input {
           font-size: 13px;
           color: var(--tg-theme-hint-color, #9aa6b2);
@@ -325,30 +221,35 @@ function Toolbar({
           text-align: center;
           font-size: 13px;
         }
-        .page-input input:disabled {
-          opacity: 0.5;
-        }
       `}</style>
     </div>
   );
 }
 
 function PageMode({
-  pdf,
   page,
-  numPages,
   onPrev,
   onNext,
 }: {
-  pdf: any;
   page: number;
-  numPages: number;
   onPrev: () => void;
   onNext: () => void;
 }) {
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
+
+  useEffect(() => {
+    const next = page + 1;
+    if (next <= NUM_PAGES) {
+      const img = new Image();
+      img.src = pageUrl(next);
+    }
+    const prev = page - 1;
+    if (prev >= 1) {
+      const img = new Image();
+      img.src = pageUrl(prev);
+    }
+  }, [page]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
@@ -368,14 +269,14 @@ function PageMode({
   };
 
   return (
-    <div
-      ref={wrapperRef}
-      className="page-mode"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-    >
-      <div className="page-canvas-wrap">
-        <PdfPage pdf={pdf} pageNumber={page} fit="contain" />
+    <div className="page-mode" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className="page-img-wrap">
+        <img
+          key={page}
+          src={pageUrl(page)}
+          alt={`Page ${page}`}
+          draggable={false}
+        />
       </div>
 
       <button
@@ -390,7 +291,7 @@ function PageMode({
         className="nav nav-right"
         aria-label="Next page"
         onClick={onNext}
-        disabled={page >= numPages}
+        disabled={page >= NUM_PAGES}
       >
         &#8250;
       </button>
@@ -404,12 +305,24 @@ function PageMode({
           justify-content: center;
           padding: 12px;
         }
-        .page-canvas-wrap {
+        .page-img-wrap {
           width: 100%;
           height: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
+        }
+        img {
+          max-width: 100%;
+          max-height: 100%;
+          width: auto;
+          height: auto;
+          object-fit: contain;
+          background: #ffffff;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+          border-radius: 4px;
+          user-select: none;
+          -webkit-user-drag: none;
         }
         .nav {
           position: absolute;
@@ -452,35 +365,29 @@ function PageMode({
 }
 
 function ScrollMode({
-  pdf,
-  numPages,
   currentPage,
   onPageChange,
 }: {
-  pdf: any;
-  numPages: number;
   currentPage: number;
   onPageChange: (p: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const didInitialJump = useRef(false);
-  const [visiblePages, setVisiblePages] = useState<Set<number>>(() => new Set([1]));
 
   const pageNumbers = useMemo(
-    () => Array.from({ length: numPages }, (_, i) => i + 1),
-    [numPages]
+    () => Array.from({ length: NUM_PAGES }, (_, i) => i + 1),
+    []
   );
 
   useEffect(() => {
     if (didInitialJump.current) return;
-    if (!numPages) return;
     const target = pageRefs.current[currentPage - 1];
     if (target) {
       target.scrollIntoView({ block: "start" });
       didInitialJump.current = true;
     }
-  }, [numPages, currentPage]);
+  }, [currentPage]);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -488,29 +395,23 @@ function ScrollMode({
     const observer = new IntersectionObserver(
       (entries) => {
         let topVisible: { page: number; ratio: number } | null = null;
-        setVisiblePages((prev) => {
-          const next = new Set(prev);
-          for (const entry of entries) {
-            const p = Number(
-              (entry.target as HTMLElement).dataset.pageNumber ?? "0"
-            );
-            if (!p) continue;
-            if (entry.isIntersecting) {
-              next.add(p);
-              if (!topVisible || entry.intersectionRatio > topVisible.ratio) {
-                topVisible = { page: p, ratio: entry.intersectionRatio };
-              }
-            }
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const p = Number(
+            (entry.target as HTMLElement).dataset.pageNumber ?? "0"
+          );
+          if (!p) continue;
+          if (!topVisible || entry.intersectionRatio > topVisible.ratio) {
+            topVisible = { page: p, ratio: entry.intersectionRatio };
           }
-          return next;
-        });
+        }
         if (topVisible) onPageChange((topVisible as { page: number }).page);
       },
-      { root, rootMargin: "200px 0px", threshold: [0, 0.25, 0.5, 0.75, 1] }
+      { root, threshold: [0, 0.25, 0.5, 0.75, 1] }
     );
     pageRefs.current.forEach((el) => el && observer.observe(el));
     return () => observer.disconnect();
-  }, [numPages, onPageChange]);
+  }, [onPageChange]);
 
   return (
     <div className="scroll-mode" ref={scrollRef}>
@@ -523,11 +424,13 @@ function ScrollMode({
             pageRefs.current[p - 1] = el;
           }}
         >
-          {visiblePages.has(p) ? (
-            <PdfPage pdf={pdf} pageNumber={p} fit="width" />
-          ) : (
-            <div className="scroll-placeholder">{p}</div>
-          )}
+          <img
+            src={pageUrl(p)}
+            alt={`Page ${p}`}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+          />
         </div>
       ))}
 
@@ -544,130 +447,20 @@ function ScrollMode({
         }
         .scroll-page {
           width: 100%;
-          max-width: 900px;
-          min-height: 300px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          max-width: 700px;
+          aspect-ratio: ${PAGE_ASPECT};
+          background: #ffffff;
+          border-radius: 4px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          overflow: hidden;
         }
-        .scroll-placeholder {
-          width: 100%;
-          aspect-ratio: 3 / 4;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--tg-theme-hint-color, #9aa6b2);
-          font-size: 28px;
-          opacity: 0.4;
-          background: rgba(255, 255, 255, 0.03);
-          border-radius: 8px;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function PdfPage({
-  pdf,
-  pageNumber,
-  fit,
-}: {
-  pdf: any;
-  pageNumber: number;
-  fit: "width" | "contain";
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let renderTask: any;
-
-    const render = async () => {
-      const canvas = canvasRef.current;
-      const wrap = wrapRef.current;
-      if (!canvas || !wrap) return;
-
-      try {
-        const pdfPage = await pdf.getPage(pageNumber);
-        if (cancelled) return;
-
-        const viewport1 = pdfPage.getViewport({ scale: 1 });
-        const wrapW = wrap.clientWidth || 1;
-        const wrapH = wrap.clientHeight || 1;
-
-        let baseScale: number;
-        if (fit === "width") {
-          baseScale = wrapW / viewport1.width;
-        } else {
-          const sx = wrapW / viewport1.width;
-          const sy = wrapH / viewport1.height;
-          baseScale = Math.min(sx, sy);
-        }
-
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const renderViewport = pdfPage.getViewport({ scale: baseScale * dpr });
-        canvas.width = Math.floor(renderViewport.width);
-        canvas.height = Math.floor(renderViewport.height);
-        canvas.style.width = `${Math.floor(renderViewport.width / dpr)}px`;
-        canvas.style.height = `${Math.floor(renderViewport.height / dpr)}px`;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        const renderParams: any = { canvasContext: ctx, viewport: renderViewport };
-        try {
-          renderParams.canvas = canvas;
-        } catch {}
-
-        renderTask = pdfPage.render(renderParams);
-        await renderTask.promise;
-      } catch (e: any) {
-        if (e?.name === "RenderingCancelledException") return;
-        console.error("[PdfPage]", e);
-      }
-    };
-
-    render();
-
-    const ro = new ResizeObserver(() => {
-      if (renderTask) {
-        try {
-          renderTask.cancel();
-        } catch {}
-      }
-      render();
-    });
-    if (wrapRef.current) ro.observe(wrapRef.current);
-
-    return () => {
-      cancelled = true;
-      ro.disconnect();
-      if (renderTask) {
-        try {
-          renderTask.cancel();
-        } catch {}
-      }
-    };
-  }, [pdf, pageNumber, fit]);
-
-  return (
-    <div ref={wrapRef} className="pdf-page-wrap">
-      <canvas ref={canvasRef} />
-      <style jsx>{`
-        .pdf-page-wrap {
+        .scroll-page img {
           width: 100%;
           height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        canvas {
-          background: #ffffff;
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-          border-radius: 4px;
-          max-width: 100%;
-          max-height: 100%;
+          object-fit: contain;
+          display: block;
+          user-select: none;
+          -webkit-user-drag: none;
         }
       `}</style>
     </div>
