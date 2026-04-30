@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const NUM_PAGES = 400;
-const PAGE_ASPECT = 632 / 1021;
 const STORAGE_KEY = "tsg-reader-state-v1";
 
 type Mode = "page" | "scroll";
@@ -448,7 +447,8 @@ function ScrollMode({
         .scroll-page {
           width: 100%;
           max-width: 700px;
-          aspect-ratio: ${PAGE_ASPECT};
+          min-height: 200px;
+          aspect-ratio: 632 / 1021;
           background: #ffffff;
           border-radius: 4px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -456,7 +456,8 @@ function ScrollMode({
         }
         .scroll-page img {
           width: 100%;
-          height: 100%;
+          height: auto;
+          max-height: 100%;
           object-fit: contain;
           display: block;
           user-select: none;
