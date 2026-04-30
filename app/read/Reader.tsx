@@ -426,6 +426,8 @@ function ScrollMode({
           <img
             src={pageUrl(p)}
             alt={`Page ${p}`}
+            width={632}
+            height={1021}
             loading="lazy"
             decoding="async"
             draggable={false}
@@ -447,19 +449,15 @@ function ScrollMode({
         .scroll-page {
           width: 100%;
           max-width: 700px;
-          min-height: 200px;
-          aspect-ratio: 632 / 1021;
           background: #ffffff;
           border-radius: 4px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
           overflow: hidden;
         }
         .scroll-page img {
+          display: block;
           width: 100%;
           height: auto;
-          max-height: 100%;
-          object-fit: contain;
-          display: block;
           user-select: none;
           -webkit-user-drag: none;
         }
