@@ -94,7 +94,7 @@ export default function Reader() {
         const pdfjs: any = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-        const task = pdfjs.getDocument({ url: PDF_URL, disableAutoFetch: true, disableStream: false });
+        const task = pdfjs.getDocument({ url: PDF_URL });
         task.onProgress = (p: { loaded: number; total: number }) => {
           if (p.total) setLoadProgress(Math.round((p.loaded / p.total) * 100));
         };
@@ -596,27 +596,31 @@ function PdfPage({
         const wrapW = wrap.clientWidth || 1;
         const wrapH = wrap.clientHeight || 1;
 
-        let scale: number;
+        let baseScale: number;
         if (fit === "width") {
-          scale = wrapW / viewport1.width;
+          baseScale = wrapW / viewport1.width;
         } else {
           const sx = wrapW / viewport1.width;
           const sy = wrapH / viewport1.height;
-          scale = Math.min(sx, sy);
+          baseScale = Math.min(sx, sy);
         }
 
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const viewport = pdfPage.getViewport({ scale });
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        const renderViewport = pdfPage.getViewport({ scale: baseScale * dpr });
+        canvas.width = Math.floor(renderViewport.width);
+        canvas.height = Math.floor(renderViewport.height);
+        canvas.style.width = `${Math.floor(renderViewport.width / dpr)}px`;
+        canvas.style.height = `${Math.floor(renderViewport.height / dpr)}px`;
 
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        renderTask = pdfPage.render({ canvasContext: ctx, viewport });
+        const renderParams: any = { canvasContext: ctx, viewport: renderViewport };
+        try {
+          renderParams.canvas = canvas;
+        } catch {}
+
+        renderTask = pdfPage.render(renderParams);
         await renderTask.promise;
       } catch (e: any) {
         if (e?.name === "RenderingCancelledException") return;
