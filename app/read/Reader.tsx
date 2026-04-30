@@ -413,55 +413,56 @@ function ScrollMode({
   }, [onPageChange]);
 
   return (
-    <div className="scroll-mode" ref={scrollRef}>
+    <div
+      ref={scrollRef}
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflowY: "auto",
+        padding: 12,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
       {pageNumbers.map((p) => (
         <div
           key={p}
-          className="scroll-page"
           data-page-number={p}
           ref={(el) => {
             pageRefs.current[p - 1] = el;
+          }}
+          style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: 700,
+            paddingBottom: "161.55%",
+            background: "#ffffff",
+            borderRadius: 4,
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+            overflow: "hidden",
+            flex: "0 0 auto",
           }}
         >
           <img
             src={pageUrl(p)}
             alt={`Page ${p}`}
-            width={632}
-            height={1021}
             loading="lazy"
             decoding="async"
             draggable={false}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              display: "block",
+              userSelect: "none",
+            }}
           />
         </div>
       ))}
-
-      <style jsx>{`
-        .scroll-mode {
-          position: absolute;
-          inset: 0;
-          overflow-y: auto;
-          padding: 12px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 12px;
-        }
-        .scroll-page {
-          width: 100%;
-          max-width: 700px;
-          background: #ffffff;
-          border-radius: 4px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-          overflow: hidden;
-        }
-        .scroll-page img {
-          display: block;
-          width: 100%;
-          height: auto;
-          user-select: none;
-          -webkit-user-drag: none;
-        }
-      `}</style>
     </div>
   );
 }
