@@ -29,6 +29,16 @@ export default function HomePage() {
         </li>
       </ul>
 
+      <h2 style={{ marginTop: 40 }}>Mini App</h2>
+      <p>
+        The book reader is also available as a Telegram Mini App at{" "}
+        <a href="/read">
+          <code>/read</code>
+        </a>{" "}
+        &mdash; open it directly or wire it up in BotFather as your bot&apos;s Web
+        App URL.
+      </p>
+
       <h2 style={{ marginTop: 40 }}>Setup</h2>
       <ol>
         <li>
